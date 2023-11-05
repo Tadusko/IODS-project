@@ -1,13 +1,33 @@
-
 # About the project
 
-*Write a short description about the course and add a link to your GitHub repository here. This is an R Markdown (.Rmd) file so you should use R Markdown syntax.*
+*Let's get started with this course. Right now, I'm feeling rather nice -- submitted my first article earlier today. Here's hoping it doesn't bounce back immediately.*
+
+What I expect from this course:
+
+-   Improve my R skills -- I've played around it a few times, but Python is more my thing.
+
+-   Remind myself of git & GitHub functions.
+
+-   Improve my statistical analysis skills.
+
+**I heard about this course via an email.**
+
+I thought the intro with Health Data Science worked quite nicely, though there is **a lot** of content to go through.
+
+What I'm not yet sold on is R's syntax. There seems to be rather many ways and libraries to do things, and for someone moving from Python and Pandas, none of them as intuitive. Of course, this is at least partly a matter of taste and habit.
+
+Moving on:
 
 ```{r}
 # This is a so-called "R chunk" where you can write R code.
+date <- format(Sys.Date(), format="%d %m %Y")
 
-date()
+cat('hello world on', date)
 
 ```
-The text continues here.
+
+Find my repo here: <https://github.com/tadusko/IODS-project>
+
+Or just [here](https://github.com/tadusko/IODS-project)
+
 
