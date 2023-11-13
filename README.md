@@ -1,2 +1,2 @@
 # IODS-project
-Template for the IODS course
+Find my course diary here: https://tadusko.github.io/IODS-project/
