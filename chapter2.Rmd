@@ -1,13 +1,113 @@
-# Insert chapter 2 title here
+# Chapter 2: Regression and model validation
 
-*Describe the work you have done this week and summarize your learning.*
+This week started our journey to regression analysis with simple and multiple linear models. Ways of validating the models graphically are also used.
 
-- Describe your work and results clearly. 
-- Assume the reader has an introductory course level understanding of writing and reading R code as well as statistical methods.
-- Assume the reader has no previous knowledge of your data or the more advanced methods you are using.
+## Data description
+
+This week, we'll be working on survey data to understand connections between the attitudes and motivations of students with their performance in an exam. The data is from 2014 and is collected by Kimmo Vehkalahti. [Full metadata description is provided here.](https://www.mv.helsinki.fi/home/kvehkala/JYTmooc/JYTOPKYS3-meta.txt)
+
+Since the original data includes tens of variables, the data has been preprocessed by collapsing the answers to many Likert-scaled claims to single answers by theme. For example, the variable "stra" represents the mean of answers related to "Study strategy".
+
+Let's read in the data and explore its structure:
 
 ```{r}
-date()
+library(dplyr)
+library(readr)
+df <- read_csv("data/learning2014.csv", show_col_types = FALSE)
+str(df)
+dim(df)
 ```
 
-Here we go again...
+#### Interpretation:
+
+Cool! There are 166 observations (rows) and 7 variables (columns). The variables are all numerical save for gender, which is a binary character (F/M). Points tells the exam performance of that student and is our target variable.
+
+## Data overview
+
+Let's start with a more thorough exploration of the variables. It's important to know the distribution of the variables and their interconnections. As a reminder, the task is to predict exam performance from survey results that try to capture the study strategies and attitudes of students.
+
+Let's therefore create a graphical representation of the variables and a summary statistics table.
+
+```{r}
+# calling the GGally and ggplot2 libraries
+library(GGally)
+library(ggplot2)
+
+# creating a plot matrix to explore the distribution of the variables and the relationships between them.
+p <- ggpairs(df, mapping = aes(), title="Relationships between the variables", progress = FALSE, lower = list(combo = wrap("facethist", bins = 20)))
+
+# draw the plot
+p
+
+# summary stats of the numerical columns
+summary(dplyr::select(df, -c(gender)))
+
+# counts per gender
+table(df$gender)
+```
+
+#### Interpretation:
+
+Starting with the background variables (age & gender), the participants skew young (median: 22, mean: 26). There are about twice as many women as men in the data.
+
+Looking at histograms, many of the survey result variables (attitude, deep, stra, surf), are approximately normally distributed. The variables are mostly not correlated with each other.
+
+The rightmost columns shows correlations between exam points and background/survey variables. All except one are not meaningful: attitude towards statistics is positively correlated with exam performance (Pearson correlation coefficient: 0.437). Strategic learning and surface learning related questions yield the next highest correlations (0.146 and -0.144, respectively).
+
+## Creating a multiple regression model
+
+Based on the correlation coefficients, let's build a regression model with three explanatory variables: attitude towards statistics (ATTITUDE), strategic learning questions (STRA) and surface learning questions (SURF).
+
+```{r}
+
+# create a regression model with multiple explanatory variables
+multi_model <- lm(points ~ attitude + stra + surf, data = df)
+
+# summarize model
+summary(multi_model)
+
+```
+#### Interpretation and explanation
+This model does not work particularly well: multiple R-squared is only 0.2074 and adjusted 0.1927. R-squared values basically quantify how much of the variation in point outcomes are captured by the explanatory variables.
+
+Similarly to the previous correlations, only ATTITUDE is statistically significant. Therefore, let's fit another model without the non-significant variables.
+
+## A simpler regression model
+
+```{r}
+
+# create a regression model with the significant variable
+model <- lm(points ~ attitude, data = df)
+
+# summarize model
+summary(model)
+
+```
+#### Interpretation and explanation
+While multiple R-squared is slightly lower, this is not a cause for concern. After all, including even spurious variables at a model will explain some of its noise.
+
+Multiple R-squared for a model with only one explanatory variable is basically the square of the correlation coefficient (=0.437²)
+
+In this model, the explanatory variable is significant. Let's continue using it.
+
+## Model diagnostics
+Finally, we ought to make sure the model does not violate the assumptions of normality and constant variance.
+
+For this purpose, let's plot the _residuals against the fitted values_, residuals in a _Quantile-Quantile plot_ and _Residuals vs Leverage_. 
+```{r}
+
+par(mfrow = c(2,2))
+
+# draw diagnostic plots using the plot() function. Choose the plots 1, 2 and 5
+plot(model, which=c(1,2,5))
+
+```
+
+#### Interpretation
+Starting from Residuals vs Fitted, we are looking for roughly a similar jitter pattern all throughout the plot. While a few outliers exist, it seems good overall. *The constant variance assumption is not violated*.
+
+Q-Q plot should form approximately a straight line. Again, that is achieved. *The data follows roughly a normal distribution*.
+
+Leverage tells us how much influence individual observations have on the model fit. I don't see anything too alarming.
+
+*Summary*: the model does not violate any underlying assumptions. However, it does not explain the phenomena (exam performance) that well, either.
