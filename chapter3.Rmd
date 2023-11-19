@@ -1,0 +1,209 @@
+---
+title: "chapter3"
+author: "Tatu Leppämäki"
+date: "2023-11-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Chapter 3: Logistic regression
+
+This week we dive into logistic regression. It's as an approach that can be applied to a binary response variable. Since the previously used linear regression models have certain assumptions, such as normality assumption, we cannot use them here. Instead, we'll rely on Generalized Linear Models (GLM). The output of the model will be a probability that the response variable is either true or false.
+
+What are GLM's? Let's work through an exercise to find out. The task is to examine the high alcohol consumption and its interplay with various socioeconomic variables. A succesful model will be able to predict high alcohol consumption based on other variables tied to the individual.
+
+## Data description
+
+We use a dataset of Portuguese secondary school students collected by combining school records and questionnaires. The raw data is created by Paolo Cortez and it is available at [this link](https://doi.org/10.24432/C5TG7T) under CC BY 4.0. Other metadata can also be found at the link.
+
+I have preprocessed the data by joining the two distinct datasets in the original file (math and Portuguese performance). In addition, I have created a new column (*alc_use*) that represents the mean alcohol use of students on a five-point scale from very low to very high. From that, I've derived a binary variate (*high_use*), which is true if the mean alcohol use is over 2.
+
+```{r}
+library(dplyr)
+library(readr)
+alc <- read_csv("data/alc.csv", show_col_types = FALSE)
+str(alc)
+dim(alc)
+```
+
+There are 370 observations and 35 variables -- an extensive set of socioeconomic background variables! Check out the dataset's [metadata](https://doi.org/10.24432/C5TG7T) for more info on the variables
+
+## Hypothesising
+
+Let's pick *four* variables of interest and examine their connection to alcohol consumption. Below are my picks and my hypotheses on their connection to alcohol:
+
+-   Sex [binary]: I assume men will drink more on average.
+-   Traveltime [numeric, less--more 1--5]: Could be a proxy for many things; e.g. family wealth, interest in coming to the school if arriving from far away. I'll wager higher travel time is linked to higher consumption.
+-   Studytime [numeric, 1--5]: More time to study, less time to party?
+-   goout [numeric, 1--5]: More outgoing folks will drink more.
+
+## Exploration of variables
+
+Let's look into the variables and their relationship with high alcohol consumption in detail to see if the hypotheses holds any water!
+
+First, some simple bar plots. First plot simply shows the distribution of each variable. Then, each plot is divided into two: they show the distribution on that variable when *high_use* is True or False.
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(purrr)
+
+# extracting only the variables of interest to a new dataframe
+extr <- alc[,c("sex", "traveltime", "studytime", "goout")]
+
+# histograms
+gather(extr) %>% ggplot(aes(value)) + facet_wrap("key", scales = "free") + geom_bar()
+
+# printing out multiple plots was way harder than it should be
+# anyway, this should do
+walk(names(extr), ~{
+  g <- ggplot(data = alc, aes(x = !!sym(.)))
+  g <- g + geom_bar() + facet_wrap(~high_use)
+  print(g)
+})
+
+```
+
+#### Interpretation
+
+The plots show us at least that that men are more prevalent among the high users. In addition, the distribution for outgoing people between high users and others is different enough to be significant. However, for the other values, bar plots may not be the best approach.
+
+Let's therefore tabulate and group by the binary variables (high_use, sex) and calculate the mean values for each numerical subgroup.
+
+```{r}
+
+
+alc %>% group_by(sex, high_use) %>% summarise(count = n(), mean_travel = mean(traveltime), mean_study = mean(studytime), mean_out = mean(goout))
+```
+
+#### Interpretation
+
+Interesting! We see evidence to support all of the hypotheses -- male sex, long travel time, low study time and an outgoing personality indicate high use. However, the differences for mean travel and study times are quite small. A statistical test would be needed to say anything with more confidence.
+
+## Logistic regression
+
+Now, to make a GLM with the variables we have. As a reminder, the model tries to predict a binary value: whether alcohol use is high or not.
+
+```{r}
+# creating the model
+m <- glm(high_use ~ goout + traveltime + studytime + sex, data = alc, family = "binomial")
+
+# print out a summary of the model
+summary(m)
+
+# print out the coefficients of the model
+coef(m)
+
+```
+
+#### Interpretation
+
+Other than travel time, all the variables are significant (\< 0.05). They affect the model in different ways: for example, an increase in study time decreases the probability of high use, whereas the effect is opposite for increasing outgoingness.
+
+Next, let's interpret the model coefficients as odds ratios and calculate confidence intervals for them.
+
+```{r}
+# find the model with glm()
+m <- glm(high_use ~ goout + traveltime + studytime + sex, data = alc, family = "binomial")
+
+# compute odds ratios (OR)
+OR <- coef(m) %>% exp
+
+# compute confidence intervals (CI)
+CI <- confint(m) %>% exp
+
+# print out the odds ratios with their confidence intervals
+cbind(OR, CI)
+
+```
+
+#### Interpretation
+
+Again, we see that travel time is not significant: its confidence interval includes 1, therefore it doesn't make a difference what the travel time is for the probabilities.
+
+Other than that, see for example the effect of male sex: it is about twice as likely (CI: 1.21, 3.4) to be a high alcohol user if one is male.
+
+## Exploring the predictive power of the model
+
+Finally, let's see if the model does what we claimed it does. For that, let's use it to predict the outcome for each student and then make a confusion matrix.
+
+```{r}
+# let's drop the insignificant variable
+m <- glm(high_use ~ goout + studytime + sex, data = alc, family = "binomial")
+
+# predict() the probability of high_use
+probabilities <- predict(m, type = "response")
+
+# add the predicted probabilities to 'alc'
+alc <- mutate(alc, probability = probabilities)
+
+# use the probabilities to make a prediction of high_use
+alc <- mutate(alc, prediction = probability > 0.5)
+
+# tabulate the target variable versus the predictions
+print(table(high_use = alc$high_use, prediction = alc$prediction))
+
+# tabulate the target variable versus the predictions; probabilities
+print(table(high_use = alc$high_use, prediction = alc$prediction) %>% prop.table() %>% addmargins())
+
+```
+
+#### Interpretation
+
+Hmm, not bad, but the model seems to make awful many false negative predictions (n=58, 16%).
+
+## Better than a guess?
+
+The model should at least do better than a naïve guessing. Let's try this by calculating a loss function for the predictions and comparing it to how many errors would be caused if every single case is defined as False or True.
+
+```{r}
+# define a loss function (mean prediction error)
+loss_func <- function(class, prob, threshold, equals) {
+  if (equals==TRUE){
+    n_wrong <- abs(class - prob) = threshold
+  } else {
+    n_wrong <- abs(class - prob) > threshold
+  }
+  print(mean(n_wrong))
+}
+
+loss_func <- function(class, prob) {
+  n_wrong <- abs(class - prob) > 0.5
+  mean(n_wrong)
+}
+
+#loss_f(class = alc$high_use, prob = alc$probability)
+# call loss_func to compute the average number of wrong predictions in the (training) data
+loss_func(class = alc$high_use, prob = alc$probability)
+loss_func(class = alc$high_use, prob = 0)
+loss_func(class = alc$high_use, prob = 1)
+
+```
+
+#### Interpretation
+
+Assuming everyone is non-high user gives an error rate of 0.3 -- compared to the error rate of \~0.23 of the model. Therefore, the model at least outperforms a naïve baseline.
+
+## K-fold cross validation
+
+K-fold cross validation is a type of validation method in which the input data is split into training and test datasets, which are rotated. The aim is describe model performance in a way that is less susceptible to overfitting and randomness than just training and testing on the whole dataset.
+
+```{r}
+library(boot)
+
+# doing the cross validation – K=number of rows=370
+cv <- cv.glm(data = alc, cost = loss_func, glmfit = m, K = nrow(alc))
+
+# average number of wrong predictions in the cross validation
+cv$delta[1]
+```
+
+#### Interpretation
+
+THe average error rate of \~0.26 is a bit worse than the whole-dataset error rate of \~0.23. It is no better than the error rate of the model explored in the exercises this week.
+
+## Chapter 3 summary
+This week, we explored logistic regression, odds ratios and (cross) validation. Working through an example dataset showed how a binary variable (high alcohol consumption or not) could be predicted with a GLM using other variables. The performance of the model could then be quantified and validated. The model outdid a naïve baseline but could probably be finetuned with more fitting variables. 3/4 hypotheses I made previously held quite nicely! Only the travel time, which could indicate a great many things, was not useful for prediction.
