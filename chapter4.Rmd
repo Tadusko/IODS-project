@@ -1,0 +1,261 @@
+---
+title: "chapter4"
+author: "Tatu Leppämäki"
+date: "2023-11-26"
+output: html_document
+---
+
+# Chapter 4: Clustering and classification
+
+It's common to examine data through, e.g., socio-economic and societal premade classes that are fit into data -- male and female, young and old etc. Should we be bound to these or could we let suitable classes emerge from the features of the data?
+
+This week, we'll delve into methods for creating data clusters that are alike in some (meaningful) ways. Once the clusters are created, the classes may be labelled and new observations may be classified into them.
+
+## Tasks 2--3: Data exploration
+
+### Description of the data
+
+The dataset we'll be using is provided through the R package 'MASS'. The 'Boston' consists of various descriptive value sof Boston, Massachusetts, such as crime rate per capita, nitrogen oxide concentration rates and apartment values. Full metadata [can be found here](https://stat.ethz.ch/R-manual/R-devel/library/MASS/html/Boston.html).
+
+Let's peek at the data.
+
+```{r}
+suppressMessages(library(MASS))
+suppressMessages(library(dplyr))
+
+# load the data
+bost <- Boston
+
+# explore the dataset
+str(bost)
+summary(bost)
+
+
+# plot matrix of the variables
+#pairs(bost)
+
+```
+
+The dataframe has 506 rows and 14 columns. The variable types differ quite a bit: some are counts, others e.g. population normalized values and yet one ('chas') a binary dummy variable.
+
+### Distributions and correlations
+
+The multitude of variables makes simple interpretations rather tough. Let's check out a mix of histograms and scatter plots anyway.
+
+```{r}
+# needed for histograms
+# from pairs plot documentation: https://stat.ethz.ch/R-manual/R-devel/library/graphics/html/pairs.html
+panel.hist <- function(x, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(usr[1:2], 0, 1.5) )
+    h <- hist(x, plot = FALSE)
+    breaks <- h$breaks; nB <- length(breaks)
+    y <- h$counts; y <- y/max(y)
+    rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
+}
+# plot matrix of the variables
+pairs(Boston, cex = 0.05, diag.panel=panel.hist, upper.panel=NULL)
+```
+
+#### Interpretation
+
+For example crime rate and residential land rate variables are heavily left-skewed (they have a lot of low values). Others are closer to normal ('lstat') or have other distributions ('rad').
+
+Seemingly some of the correlate, but for a proper overview, let's print out a correlation matrix and a correlation plot.
+
+```{r}
+cor_matrix <- cor(Boston) %>% round(digits=2)
+cor_matrix
+# print the correlation matrix
+
+
+# visualize the correlation matrix
+library(corrplot)
+corrplot(cor_matrix, method="circle", type = "upper", cl.pos = "b",tl.pos = "d",tl.cex = 0.6)
+```
+
+#### Interpretation
+
+Crime rate has correlates positively with, e.g., property tax rates ('tax') and negative ones with, e.g., the proportion of Black population. In general, many of the variables are correlated with each other, which is not surprising, considering the interlinkages of, for example, property values and crime.
+
+## Task 4: Standardization and other data wrangling
+
+As mentioned before, the variables are not directly comparable right now. Let's use the scaling functionality in R to make them so.
+
+```{r}
+# center and standardize variables
+boston_scaled <- scale(Boston)
+
+# change the object to data frame
+boston_scaled <- as.data.frame(boston_scaled)
+
+summary(boston_scaled)
+```
+
+Alright! All the values are roughly centered around 0 now (roughly varying between -5--5).
+
+### Quantiles and a categorical variable
+
+We will try to examine crime through the lens of four classes (low, medium low, medium high and high). For that, we'll need to create a factor variable from a continuous one -- in this case, by splitting the crime variable into four equally sized bins.
+
+```{r}
+# create a quantile vector of crim and print it
+bins <- quantile(boston_scaled$crim)
+
+# create a categorical variable 'crime'
+crime <- cut(boston_scaled$crim, breaks = bins, label=c("low", "med_low", "med_high", "high"), include.lowest = TRUE)
+
+# look at the table of the new factor crime
+table(crime)
+
+# remove original crim from the dataset
+boston_scaled <- dplyr::select(boston_scaled, -crim)
+
+# add the new categorical value to scaled data
+boston_scaled <- data.frame(boston_scaled, crime)
+```
+
+### Train and test sets
+
+A random 80 % of the data is used for fitting a linear discriminant model. The rest are set aside for testing.
+
+```{r}
+# number of rows in the Boston dataset 
+n <- nrow(Boston)
+
+# choose randomly 80% of the rows
+ind <- sample(n,  size = n * 0.8)
+
+# create train set
+train <- boston_scaled[ind,]
+
+# create test set 
+test <- boston_scaled[-ind,]
+```
+
+## Task 5. Linear discriminant analysis
+
+The point in linear discriminant analysis is to classify an observation to a class based on continuous variables. In this case, we'll use all other variables to find a combination of variables that discerns the crime rate classes.
+
+```{r}
+# linear discriminant analysis
+lda.fit <- lda(crime ~ ., data = train)
+
+# print the lda.fit object
+lda.fit
+
+# the function for lda biplot arrows
+lda.arrows <- function(x, myscale = 1, arrow_heads = 0.1, color = "red", tex = 0.75, choices = c(1,2)){
+  heads <- coef(x)
+  graphics::arrows(x0 = 0, y0 = 0, 
+         x1 = myscale * heads[,choices[1]], 
+         y1 = myscale * heads[,choices[2]], col=color, length = arrow_heads)
+  text(myscale * heads[,choices], labels = row.names(heads), 
+       cex = tex, col=color, pos=3)
+}
+
+# target classes as numeric
+classes <- as.numeric(train$crime)
+
+# plot the lda results (select both lines and execute them at the same time!)
+plot(lda.fit, dimen = 2)
+lda.arrows(lda.fit, myscale = 1)
+```
+
+#### Interpretation
+
+The biplot shows two clear clusters after the data is collapsed. One on the right seems to have mostly high values – but a lot of noise, too.
+
+## Task 6. Classification with LDA
+
+Let's formally test the model.
+
+```{r}
+
+# save the correct classes from test data
+correct_classes <- test$crime
+
+# remove the crime variable from test data
+test <- dplyr::select(test, -crime)
+
+lda.pred <- predict(lda.fit, newdata = test)
+
+# cross tabulate the results
+table(correct = correct_classes, predicted = lda.pred$class)
+```
+
+#### Interpretation
+
+The majority of predictions are correct for each class. More extreme values (low and high) are seemingly easier to classify than middle-ground values.
+
+## Task 7. K-means
+
+### Standardization and distance measures
+
+After again scaling the raw values, distance matrices are built – below, two algorithms (Euclidean and Manhattan distance) are used for the task. They give mildly differing distance values, but let's use the default Euclidean measure.
+
+```{r}
+boston_scaled <- scale(Boston)
+
+# change the object to data frame
+boston_scaled <- as.data.frame(boston_scaled)
+
+# euclidean distance matrix
+dist_eu <- dist(boston_scaled)
+
+# look at the summary of the distances
+summary(dist_eu)
+
+# manhattan distance matrix
+dist_man <- dist(boston_scaled, method='manhattan')
+
+# look at the summary of the distances
+summary(dist_man)
+```
+
+### Clustering
+
+On to clustering. The K-means algorithms wants to know the number of clusters it creates. Let's start of randomly with 4.
+
+```{r}
+library(ggplot2)
+set.seed(42)
+
+# k-means clustering
+km <- kmeans(boston_scaled, centers = 4)
+
+# plot the Boston dataset with clusters
+# split into two figures for readability
+pairs(boston_scaled[1:7],cex=0.5, col = km$cluster)
+
+pairs(boston_scaled[7:14],cex=0.5, col = km$cluster)
+
+```
+
+To make the analysis more robust, we'll test out the inner cohesion of the clusters with differing number of centers. Seemingly, 2 is optimal, since the most radical change in the WCSS value happens at that point.
+
+```{r}
+
+# determine the number of clusters
+k_max <- 10
+
+# calculate the total within sum of squares
+twcss <- sapply(1:k_max, function(k){kmeans(boston_scaled, k)$tot.withinss})
+
+# visualize the results
+qplot(x = 1:k_max, y = twcss, geom = 'line')
+
+# k-means clustering
+km <- kmeans(boston_scaled, centers = 2)
+
+# plot the Boston dataset with clusters
+pairs(boston_scaled,cex=0.5, col = km$cluster, upper.panel=NULL)
+# split into two for readability
+pairs(boston_scaled[1:7],cex=0.5, col = km$cluster, upper.panel=NULL)
+
+pairs(boston_scaled[7:14],cex=0.5, col = km$cluster, upper.panel=NULL)
+```
+
+#### Interpretation
+With the scaled data, many of the variables seem to form horizontal and vertical "lines" at certain values. I wonder how much that affects clustering. Anyways, visual examination shows that the two clusters seem to be mostly sensible across the variables.

@@ -132,16 +132,16 @@ data_column.
 ```{r}
 # Work with the exercise in this chunk, step-by-step. Fix the R code!
 # Boston dataset is available
-
+?round
 # calculate the correlation matrix and round it
-cor_matrix <- cor(Boston)
+cor_matrix <- cor(Boston) %>% round(digits=2)
 cor_matrix
 # print the correlation matrix
 
 
 # visualize the correlation matrix
 library(corrplot)
-corrplot(cor_matrix, method="circle")
+corrplot(cor_matrix, method="circle", type = "upper", cl.pos = "b",tl.pos = "d",tl.cex = 0.6)
 
 ```
 
@@ -371,6 +371,7 @@ boston_scaled$crime <- factor(boston_scaled$crime, levels = c("low", "med_low", 
 ind <- sample(nrow(boston_scaled),  size = nrow(boston_scaled) * 0.8)
 train <- boston_scaled[ind,]
 test <- boston_scaled[-ind,]
+
 correct_classes <- test$crime
 test <- dplyr::select(test, -crime)
 ```
