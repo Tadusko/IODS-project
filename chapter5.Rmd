@@ -11,3 +11,167 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Chapter 5: Dimensionality reduction techniques
 
+Data scarcity has a twin brother, data deluge. Sometimes we have multiple datasets to choose from, or many variables. These variables may in addition be linked to each other -- for example, educational level attained and income are correlated.
+
+This week, we'll examine methods exploratory methods created for distilling relevant information from many variables to a few. These *dimensionality reduction techniques*, such as principal component analysis, return fewer columns that try to capture the variation in the original variables.
+
+## 1. Data description and correlations
+
+This week's data has been fuzed from two datasets with socioeconomic variables describing countries: human development index (HDI) and gender inequality index (GII). The data has is offered by the United Nations Development Programme (UNDP). See full [metadata description here](https://hdr.undp.org/system/files/documents/technical-notes-calculating-human-development-indices.pdf) and refer to the [data wrangling script](https://github.com/Tadusko/IODS-project/blob/master/data/create_human.R) for further information on how the data has been modified and what the column names refer to.
+
+Let's read in the data and set country names as index.
+
+```{r}
+library(tibble)
+library(GGally)
+library(readr)
+library(dplyr)
+
+human <- read_csv("data/human.csv")
+
+human <- column_to_rownames(human, "Country")
+
+```
+
+Good. Then some data exploration.
+
+```{r}
+summary(human)
+
+ggpairs(
+ human, progress=F,
+ upper = list(continuous = wrap("density", alpha = 0.5), combo = "box"),
+ lower = list(continuous = wrap("points", alpha = 0.3,    size=0.1), 
+              combo = wrap("dot", alpha = 0.4,            size=0.2))
+)
+```
+
+Educational variables and share of female parliamentary representation are roughly normally distributed, whereas the rest are skewed left (life expectancy) or right (e.g., gross national income (GNI), adolescent birth rate). Many of the values seem to be correlated based on the scatter plots, but let's confirm this hunch with a correlation plot.
+
+```{r fig2, fig.height = 6, fig.width = 6, fig.align = "center"}
+# Access corrplot
+library(corrplot)
+
+# mark insignificant correlations
+testRes = cor.mtest(human, conf.level = 0.95)
+
+# compute the correlation matrix and visualize it with corrplot
+cor(human) %>% corrplot(p.mat = testRes$p, sig.level = 0.05, addCoef.col ='black', number.cex = 0.75, insig='blank', type = 'lower')
+
+```
+
+The educational variables are highly correlated with each other, life expectancy, GNI (+) and maternal mortality and adolescent birth rates. Expectedly, less maternal mortality and adolescent births is related to wealthier countries (GNI). Female labor participation and parliamentary representations are only weakly, if at all, correlated with the other variables.
+
+## 2. PCA on non-standardized data
+
+Let's get on with the PCA. Below is an example of how to *not* do it. With data that is unstandardized, PCA is dominated by the variables with the largest variances. In this data, that is GNI, which is in dollars / population -- much larger values than the percentage shares or ages of the other variables.
+
+```{r fig.height = 6, fig.width = 6, fig.align = "center"}
+
+
+# perform principal component analysis (with the SVD method)
+pca_human <- prcomp(human)
+
+# draw a biplot of the principal component representation and the original variables
+biplot(pca_human, choices = 1:2,cex = c(0.5, 1.2), col = c("grey40", "deeppink2"))
+
+# create and print out a summary of pca_human
+s <- summary(pca_human)
+print(s)
+
+# rounded percentages of variance captured by each PC
+pca_pr <- round(1*s$importance[2, ]*100, digits = 1)
+
+# print out the percentages of variance
+print(pca_pr)
+
+```
+
+As a consequence of the dominance of GNI, the principal component mostly describes the variation of GNI, not of the other variables. Standardization is needed.
+
+## 3. PCA on standardized data
+
+The values are scaled towards 0 -- first, mean of that variable is subracted from each value, the each value is divided by the standard deviation of that variable.
+
+```{r fig.height = 7, fig.width = 7, fig.align = "center"}
+# standardize the variables
+human_std <- scale(human)
+
+# perform principal component analysis (with the SVD method)
+pca_human <- prcomp(human_std)
+
+# create and print out a summary of pca_human
+s <- summary(pca_human)
+print(s)
+
+# rounded percentages of variance captured by each PC
+pca_pr <- round(1*s$importance[2, ]*100, digits = 1)
+
+# print out the percentages of variance
+print(pca_pr)
+
+# draw a biplot of the principal component representation and the original variables
+biplot(pca_human, choices = 1:2,cex = c(0.5, 1.0), col = c("grey40", "deeppink2"))
+
+```
+
+Standardization makes all the difference for the reasons described above. Now we see that the variables that correlated are close to each other on the X axis (education, income, life expectancy) or opposite with negative correlation (maternal age and health). The two variables that were not as related to the others are on a component of their own.
+
+## 4. Interpreting the components
+
+Although PC interpretation is often not useful -- it's educated guesswork, in essence -- let's try to see how we could interpret the first to principal components and their scatterplot.
+
+Because the first PC seems to be broadly related to people's health and income levels (positive or negative), I'll name it "Health and wellbeing". The second PC gets the label "Female societal participation" after the variables describing parliamentary share and labour participation.
+
+```{r fig.height = 7, fig.width = 7, fig.align = "center"}
+descriptions <- c("PC1: Health and wellbeing", "PC2: Female societal participation")
+pc_lab <- paste0(descriptions, " (", pca_pr[1:2], "%)")
+
+# draw a biplot of the principal component representation and the original variables
+biplot(pca_human, choices = 1:2,cex = c(0.5, 1.0), col = c("grey40", "deeppink2"),  xlab = pc_lab[1], ylab = pc_lab[2])
+```
+
+Interpreted through these labels, wellbeing nations (such as the Nordic countries) cluster to left and top (high health and female societal participation). On the other hand, countries with low female societal status, such as Syria and Iran are placed near bottom of the plot. Developing countries with worse healthcare systems and societal safety nets and thus high maternal mortality and many adolescents giving birth are placed towards the right of the plot.
+
+## 5. Tea & Multiple correspondence analysis
+
+Now for something completely different. We'll examine Multiple correspondence analysis, a method related to PCA but applicable to categorical data. 
+
+The example data originates from the FactoMineR package – it's 300 answers related to tea. 18 questions relate to people's tea drinking habits, 12 to perception of a product and 6 are background questions.
+
+```{r}
+library(FactoMineR)
+
+tea <- read.csv("https://raw.githubusercontent.com/KimmoVehkalahti/Helsinki-Open-Data-Science/master/datasets/tea.csv", stringsAsFactors = TRUE)
+
+dim(tea)
+
+summary(tea)
+
+factor_variable_names <- names(Filter(is.factor, tea_time))
+#num_plots <- length(factor_variable_names)
+#par(mfrow = c(ceiling(sqrt(num_plots)), ceiling(sqrt(num_plots))))
+
+for (variable in factor_variable_names) {
+  barplot(table(tea_time[[variable]]), main = variable, col = "skyblue", cex.main = 0.8)
+}
+
+
+```
+Let's filter the data to keep only those columns that relate to tea drinking times and one for sex.
+
+```{r}
+# keep only five columns: sex and those related to tea consumption times.
+tea_when  <-  tea[c("breakfast","tea.time","lunch","dinner", "sex")]
+
+# multiple correspondence analysis
+mca <- MCA(tea_when, graph = F)
+
+# summary of the model
+summary(mca)
+
+# visualize MCA
+plot(mca, invisible=c("ind"), graph.type = "classic", habillage = "quali")
+
+```
+What does this plot tell us? I'm not quite sure how to interpret it, to be honest. At least we saw previously that few people drink tea with dinner – those that do seem to be the outlier in this plot, too.
