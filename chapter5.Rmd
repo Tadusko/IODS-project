@@ -1,0 +1,13 @@
+---
+title: "chapter5"
+author: "Tatu Leppämäki"
+date: "2023-12-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Chapter 5: Dimensionality reduction techniques
+

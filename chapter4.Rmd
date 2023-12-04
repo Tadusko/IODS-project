@@ -165,7 +165,7 @@ lda.arrows(lda.fit, myscale = 1)
 
 #### Interpretation
 
-The biplot shows two clear clusters after the data is collapsed. One on the right seems to have mostly high values – but a lot of noise, too.
+The biplot shows two clear clusters after the data is collapsed. One on the right seems to have mostly high values -- but a lot of noise, too.
 
 ## Task 6. Classification with LDA
 
@@ -193,7 +193,7 @@ The majority of predictions are correct for each class. More extreme values (low
 
 ### Standardization and distance measures
 
-After again scaling the raw values, distance matrices are built – below, two algorithms (Euclidean and Manhattan distance) are used for the task. They give mildly differing distance values, but let's use the default Euclidean measure.
+After again scaling the raw values, distance matrices are built -- below, two algorithms (Euclidean and Manhattan distance) are used for the task. They give mildly differing distance values, but let's use the default Euclidean measure.
 
 ```{r}
 boston_scaled <- scale(Boston)
@@ -258,4 +258,5 @@ pairs(boston_scaled[7:14],cex=0.5, col = km$cluster, upper.panel=NULL)
 ```
 
 #### Interpretation
+
 With the scaled data, many of the variables seem to form horizontal and vertical "lines" at certain values. I wonder how much that affects clustering. Anyways, visual examination shows that the two clusters seem to be mostly sensible across the variables.
