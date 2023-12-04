@@ -5,10 +5,6 @@ date: "2023-12-03"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
 # Chapter 5: Dimensionality reduction techniques
 
 Data scarcity has a twin brother, data deluge. Sometimes we have multiple datasets to choose from, or many variables. These variables may in addition be linked to each other -- for example, educational level attained and income are correlated.
@@ -35,7 +31,7 @@ human <- column_to_rownames(human, "Country")
 
 Good. Then some data exploration.
 
-```{r}
+```{r  fig.height = 6, fig.width = 7, fig.align = "center"}
 summary(human)
 
 ggpairs(
@@ -60,7 +56,7 @@ cor(human) %>% corrplot(p.mat = testRes$p, sig.level = 0.05, addCoef.col ='black
 
 ```
 
-The educational variables are highly correlated with each other, life expectancy, GNI (+) and maternal mortality and adolescent birth rates. Expectedly, less maternal mortality and adolescent births is related to wealthier countries (GNI). Female labor participation and parliamentary representations are only weakly, if at all, correlated with the other variables.
+The educational variables are highly correlated with each other, life expectancy, GNI (positive) and maternal mortality and adolescent birth rates (negative). Expectedly, less maternal mortality and adolescent births is related to wealthier countries (GNI). Female labor participation and parliamentary representations are only weakly, if at all, correlated with the other variables.
 
 ## 2. PCA on non-standardized data
 
@@ -148,13 +144,15 @@ dim(tea)
 
 summary(tea)
 
-factor_variable_names <- names(Filter(is.factor, tea_time))
-#num_plots <- length(factor_variable_names)
-#par(mfrow = c(ceiling(sqrt(num_plots)), ceiling(sqrt(num_plots))))
 
-for (variable in factor_variable_names) {
-  barplot(table(tea_time[[variable]]), main = variable, col = "skyblue", cex.main = 0.8)
-}
+# The code below prints bar plots for each variable
+# uncomment to run
+
+#factor_variable_names <- names(Filter(is.factor, tea))
+
+#for (variable in factor_variable_names) {
+#  barplot(table(tea[[variable]]), main = variable, col = "skyblue", cex.main = 0.8)
+#}
 
 
 ```
