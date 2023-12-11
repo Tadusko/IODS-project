@@ -1,0 +1,294 @@
+---
+title: "chapter5"
+author: "Tatu Leppämäki"
+date: "2023-12-10"
+output: html_document
+---
+
+# Chapter 6: Analysis of longitudinal data
+
+Last week sees us delving into longitudinal data. It's common to have repeated measures data not only in behavioural science, the context of this course, but also in other social and natural sciences. This week shows a few approaches for visualizing and exploratively & formally analyzing such data.
+
+## 1. Visualizing and comparing rat growth
+
+### Data description
+
+RATS data includes measurements of 16 rats' body weights roughly once a week for 10 weeks and 11 measurements. The data originates from 'Practical longitudinal data analysis' by David Hand and Martin Crowder (1996), and has been shared in many R datasets. [See for example a description here](https://www.rdocumentation.org/packages/nlme/versions/3.1-163/topics/BodyWeight). The rats were divided into three groups based on their diet.
+
+The data has been transformed to long form [with this script](https://github.com/Tadusko/IODS-project/blob/master/data/meet_and_repeat.R).
+
+```{r}
+# necessary libraries
+library(tibble)
+#library(GGally)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+RATS <- read.table("https://raw.githubusercontent.com/KimmoVehkalahti/MABS/master/Examples/data/rats.txt", header = TRUE, sep = '\t')
+RATSL <- read_csv("data/RATSL.csv")
+
+RATSL$ID <- factor(RATSL$ID)
+RATSL$Group <- factor(RATSL$Group)
+
+dim(RATSL)
+glimpse(RATSL)
+
+```
+
+### Data exploration
+
+There's a total of 176 measurements for these 16 rats. Let's plot the weight curves of each of them.
+
+```{r}
+ggplot(RATSL, aes(x = Time, y = Weight, group = ID)) +
+  geom_line(aes(linetype = Group)) +
+  scale_x_continuous(name = "Time (days)", breaks = seq(0, 60, 10)) +
+  scale_y_continuous(name = "Weight (grams)") +
+  theme(legend.position = "top")
+
+```
+
+Groups 2 and 3 seem visually about the same, whereas rats in group 1 are several hundred grams lighter than them and do not gain much weight over the measurement period.
+
+Let's also plot each group and rat in them separately to better visualize possible individual and group differences.
+
+```{r}
+ggplot(RATSL, aes(x = Time, y = Weight, linetype = ID)) +
+  geom_line() +
+  scale_linetype_manual(values = rep(1:10, times=4)) +
+  facet_grid(. ~ Group, labeller = label_both) +
+  theme(legend.position = "none") +
+  scale_y_continuous(limits = c(min(RATSL$Weight), max(RATSL$Weight)))
+```
+
+We see at least that there's a potential outlier in group 2 and that group 3 might otherwise have a slightly higher mean weight. Such an interpretation cannot be confirmed with just line visualizations, though.
+
+Let's therefore create some summary graphs that show the mean values and standards errors of each group at each time point.
+
+```{r}
+RATSS <- RATSL %>%
+  group_by(Group, Time) %>%
+  reframe( mean = mean(Weight), se = sd(Weight)/sqrt(length((Weight))) ) %>%
+  ungroup()
+
+ggplot(RATSS, aes(x = Time, y = mean, linetype = Group, shape = Group)) +
+  geom_line() +
+  scale_linetype_manual(values = c(1,2,3)) +
+  geom_point(size=3) +
+  scale_shape_manual(values = c(1,2,3)) +
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se, linetype="1"), width=0.3) +
+  #theme(legend.position = c(0.8,0.8)) +
+  scale_y_continuous(name = "mean(weight) +/- se(weight)")
+```
+
+And boxplots of individual means weights.
+
+```{r}
+RATSSI <- RATSL %>%
+  group_by(Group, ID) %>%
+  summarise( mean=mean(Weight) ) %>%
+  ungroup()
+
+ggplot(RATSSI, aes(x = Group, y = mean)) +
+  geom_boxplot() +
+  stat_summary(fun = "mean", geom = "point", shape=23, size=4, fill = "white") +
+  scale_y_continuous(name = "Mean(weight)")
+```
+
+A few data points lie outside the boxes, but the most obvious one is in Group 2, spotted previously. Let's filter it as an outlier.
+
+```{r}
+RATSSI <- RATSL %>%
+  group_by(Group, ID) %>%
+  summarise( mean=mean(Weight) ) %>%
+  ungroup() %>%
+  filter(mean < 550)
+
+ggplot(RATSSI, aes(x = Group, y = mean)) +
+  geom_boxplot() +
+  stat_summary(fun = "mean", geom = "point", shape=23, size=4, fill = "white") +
+  scale_y_continuous(name = "Mean(weight)")
+```
+
+Dropping the high value in group 2 could be challenged as a decision, especially as there are rather few observations in each group to begin with. Nonetheless, without it, the groups are visually distinct from each other.
+
+### Formal analysis: ANOVA test
+
+Finally, we should formally test for group differences. Since there are three groups, we should fit an analysis of variance model (ANOVA). This tests for overall differences, after which Tukey's HSD test is used to find which of the groups actually differ.
+
+```{r}
+anova_model <- aov(mean ~ Group, data = RATSSI)
+summary(anova_model)
+
+print(TukeyHSD(anova_model))
+```
+
+The groups are different, all of them from each other.
+
+However, different they are, the diets (Groups) do not seem to have a significant effect on the weighs. The starting point, or first weighing, explains the outcome best. This is tested by fitting a linear model to the value with mean as the target value, followed by computing an analysis of variance table. Notice that Group is insignificant at \>0.05 level.
+
+```{r}
+
+# remove the first measurement, exclude it from mean calc, treat it as baseline
+RATSLF <- RATSL %>%
+  filter(Time > 1)  %>%
+  group_by(Group, ID) %>%
+  summarise( mean=mean(Weight) ) %>%
+  ungroup()
+  #filter(mean < 550)
+
+# add the baseline back
+RATSLF <- RATSLF %>%
+  mutate(baseline = RATS$WD1)
+
+# Fit the linear model with the mean as the response 
+fit <- lm(mean ~ baseline+Group, data = RATSLF)
+
+# Compute the analysis of variance table for the fitted model with anova()
+anova(fit)
+```
+
+## 2. BPRS scores with linear mixed effects models
+
+### Data description
+
+Next, we'll examine psychiatric treatment scores of 40 subjects over 8 weeks. The target value is called Brief Psychiatric Rating Scale (BPRS from now on.) For the purposes of this course diary, it's enough to know that lower=better when it comes to BPRS.
+
+The data has been transformed to long form [with this script](https://github.com/Tadusko/IODS-project/blob/master/data/meet_and_repeat.R).
+
+```{r}
+BPRSL <- read_csv("data/BPRSL.csv")
+# Factor treatment & subject
+BPRSL$treatment <- factor(BPRSL$treatment)
+BPRSL$subject <- factor(BPRSL$subject)
+
+dim(BPRSL)
+glimpse(BPRSL)
+
+```
+
+The data has 360 observations by 40 individuals. Let's plot them separated by treatment group:
+
+### Data exploration
+
+```{r}
+
+ggplot(BPRSL, aes(x = week, y = bprs, linetype = subject)) +
+  geom_line() +
+  scale_linetype_manual(values = rep(1:10, times=4)) +
+  facet_grid(. ~ treatment, labeller = label_both) +
+  theme(legend.position = "none") +
+  scale_y_continuous(limits = c(min(BPRSL$bprs), max(BPRSL$bprs)))
+
+```
+
+There's a lot of individual variability. Overall, the scores seem to decrease over time, but some individuals differ in this case, too.
+
+Moreover, the treatment groups don't differ much visually. We can observe this by plotting them on the same graph:
+
+```{r}
+# ggplot doesn't want to plot it when the treatment and subject are not clearly separeted
+# this fixes it by creating a new column subject_id that combines treatment and subject with a hyphen
+BPRSL <- BPRSL %>%
+  mutate(subject_id = paste0(as.character(treatment), "-", as.character(subject)))
+
+ggplot(BPRSL, aes(x = week, y = bprs, group = subject_id)) +
+  geom_line(aes(linetype = treatment)) +
+  #scale_x_continuous(name = "Time (days)", breaks = seq(0, 60, 10)) +
+  scale_y_continuous(name = "BPRS") +
+  theme(legend.position = "top")
+
+
+```
+
+Could we be able to model the data with linear models?
+
+### A simple regression model
+
+This what you shouldn't do when the observations are not independent -- they are temporally autocorrelated. In other words, previous observations predict the succeeding observations quite well.
+
+```{r}
+# create a regression model
+BPRS_reg <- lm(bprs ~ week + treatment, data = BPRSL)
+
+# print out a summary of the model
+summary(BPRS_reg)
+
+```
+
+The treatment is not significant and the model explains the phenomena really poorly in any case (Adjusted R-squared: 0.1806).
+
+### Random intercept model
+
+A mixed effects model would suit this case better. With a random intercept model, the intercept (what the target value would be when all else is zero) can differ between the subjects.
+
+```{r}
+library(lme4)
+
+# Create a random intercept model
+BPRS_ref <- lmer(bprs ~ week + treatment + (1 | subject), data = BPRSL, REML = FALSE)
+
+# Print the summary of the model
+summary(BPRS_ref)
+
+anova(BPRS_ref, BPRS_reg)
+
+```
+
+Check out ANOVA: model is a significant improvement over the naive linear model (AIC and BIC are lower). Treatment is still not a significant explanatory variable.
+
+### Random slope model
+
+Instead of intercept, the slope of each subject can be varied; slope would be the linear change of bprs each week.
+
+```{r}
+BPRS_rsm <- lmer(bprs ~ week + treatment + (week | subject), data = BPRSL, REML = FALSE)
+
+# print a summary of the model
+summary(BPRS_rsm)
+
+# perform an ANOVA test on the two models
+anova(BPRS_ref, BPRS_rsm, BPRS_reg)
+```
+
+A random slope model is a significant improvement over the random intercept model. This implies that the rate of change of BPRS score is more significant than the initial value.
+
+### The models combined
+
+Bringing random intercept and slope together with the interaction between time and treatment to create one final model:
+
+```{r}
+BPRS_rism <- lmer(bprs ~ week + treatment + (week | subject) + week * treatment , data = BPRSL, REML = FALSE)
+
+summary(BPRS_rism)
+
+anova(BPRS_rism, BPRS_ref, BPRS_rsm, BPRS_reg)
+```
+
+However, this model does not significantly improve over RSM. It still gives (just barely) the lowest AIC. Let's therefore see what it can do if we model BPRS values and visualize them.
+
+```{r}
+ggplot(BPRSL, aes(x = week, y = bprs, group = subject_id)) +
+  geom_line(aes(linetype = treatment)) +
+  #scale_x_continuous(name = "Time (days)", breaks = seq(0, 60, 10)) +
+  scale_y_continuous(name = "Observed BPRS") +
+  theme(legend.position = "top")
+
+Fitted <- fitted(BPRS_rism)
+
+BPRSL$Fitted <- Fitted
+
+ggplot(BPRSL, aes(x = week, y = Fitted, group = subject_id)) +
+  geom_line(aes(linetype = treatment)) +
+  #scale_x_continuous(name = "Time (days)", breaks = seq(0, 60, 10)) +
+  scale_y_continuous(name = "Fitted BPRS") +
+  theme(legend.position = "top")
+```
+
+Hmm, quite crude approximations. I wonder if a linear model, even one taking random effects into account, is the most approach in this case. Could a higher order model better capture the scores?
+
+Nonetheless, the does not seem to be differences between the treatment groups.
+
+### That's all, folks!!

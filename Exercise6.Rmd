@@ -703,9 +703,6 @@ ggplot(RATSL, aes(x = Time, y = Weight, group = ID)) +
   scale_y_continuous(name = "Weight (grams)") +
   theme(legend.position = "top")
 
-
-
-
 ```
 
 ## 6.11 Holding on to independence: The Linear model
